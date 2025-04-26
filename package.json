@@ -1,7 +1,7 @@
 {
   "name": "adventure-import-export",
   "version": "1.0.0",
-  "description": "",
+  "description": "A module for Foundry VTT to package and/or install adventures.",
   "main": "index.js",
   "scripts": {
     "compile": "gulp css",
@@ -10,9 +10,16 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "gulp": "^4.0.2",
-    "gulp-autoprefixer": "^7.0.1",
-    "gulp-sass": "^4.1.0",
+    "gulp": "^5.0.0",
+    "gulp-autoprefixer": "^9.0.0",
+    "gulp-sass": "^6.0.1",
     "gulp-sourcemaps": "^2.6.5"
+  },
+  "directories": {
+    "lib": "lib"
+  },
+  "keywords": [],
+  "devDependencies": {
+    "@league-of-foundry-developers/foundry-vtt-types": "^12.331.3-beta"
   }
 }

@@ -45,8 +45,8 @@ export default class Helpers {
       data.flags["exportSource"] = {
         world: game.world.id,
         system: game.system.id,
-        coreVersion: game.data.version,
-        systemVersion: game.system.data.version
+        coreVersion: game.version,
+        systemVersion: game.system.version
       };
     }
     
@@ -115,41 +115,57 @@ export default class Helpers {
    * @returns {string} - Path to file within VTT
    */
   static async importImage(path, zip, adventure) {
-    try {
-      if(path[0] === "*") {
-        // this file was flagged as core data, just replace name.
-        return path.replace(/\*/g, "");
-      } else {
-        const adventurePath = (adventure.name).replace(/[^a-z0-9]/gi, '_');
-        const targetPath = path.replace(/[\\\/][^\\\/]+$/, '');
-        const filename = path.replace(/^.*[\\\/]/, '').replace(/\?(.*)/, '');
-        
-        if(!CONFIG.AIE.TEMPORARY.import[path]) {         
-          await Helpers.verifyPath("data", `worlds/${game.world.data.name}/adventures/${adventurePath}/${targetPath}`);
-          const fileObj = zip.file(path);
-          if (fileObj !== null) {
-            const img = await zip.file(path).async("uint8array");
-            const i = new File([img], filename);
-            await Helpers.UploadFile("data", `worlds/${game.world.data.name}/adventures/${adventurePath}/${targetPath}`, i, { bucket: null })
-            CONFIG.AIE.TEMPORARY.import[path] = true;
-          }
-          else {
-            Helpers.logger.debug(`Skipping file ${path} because zip.file(path) call was null`);
-          }
-        } else {
-          Helpers.logger.debug(`File already imported ${path}`);  
-        }
-        
-        return `worlds/${game.world.id}/adventures/${adventurePath}/${targetPath}/${filename}`;
-      }
-    } catch (err) {
-      Helpers.logger.error(`Error importing image file ${path} : ${err.message}`);
-    }
+      try {
+          if (path[0] === "*") {
+              // Core/system image, not imported—just strip the leading '*'
+              return path.replace(/\*/g, "");
+          } else {
+              const adventurePath = (adventure.name).replace(/[^a-z0-9]/gi, '_');
+              const targetPath = path.replace(/[\\\/][^\\\/]+$/, ''); // removes filename from path
+              const filenameWithQuery = path.replace(/^.*[\\\/]/, '');
+              const filename = filenameWithQuery.replace(/\?.*$/, ''); // strips ?cache or ?timestamp
 
-    return path;
+              const cleanPath = `worlds/${game.world.id}/adventures/${adventurePath}/${targetPath}/${filename}`;
+
+              // Only import if not already processed
+              if (!CONFIG.AIE.TEMPORARY.import[path]) {
+                  await Helpers.verifyPath("data", `worlds/${game.world.id}/adventures/${adventurePath}/${targetPath}`);
+
+                  const fileObj = zip.file(path);
+
+                  if (!fileObj) {
+                      console.warn("File not found in zip:", path);
+                  } else {
+                      console.log("Importing image from zip:", path);
+                  }
+
+                  if (fileObj !== null) {
+                      const img = await fileObj.async("uint8array");
+                      const file = new File([img], filename);
+                      await Helpers.UploadFile("data", `worlds/${game.world.id}/adventures/${adventurePath}/${targetPath}`, file, { bucket: null });
+
+                      CONFIG.AIE.TEMPORARY.import[path] = true;
+                      Helpers.logger.debug(`Imported: ${cleanPath}`);
+                  } else {
+                      Helpers.logger.warn(`Image file not found in zip: ${path}`);
+                  }
+              } else {
+                  Helpers.logger.debug(`Already imported: ${cleanPath}`);
+              }
+
+              console.log("Returning image path:", cleanPath);
+              return cleanPath;
+          }
+      } catch (err) {
+          Helpers.logger.error(`Error importing image file ${path} : ${err.message}`);
+      }
+
+      // fallback: return original (possibly broken) path
+      return path;
   }
-  
-  /**
+
+
+    /**
    * Async for each loop
    * 
    * @param  {array} array - Array to loop through
@@ -186,9 +202,18 @@ export default class Helpers {
    * @returns {object} - Entity Object Data
    */
   static findEntityByImportId(type, id) {
-    return game.data[type].find(item => {
-      return item.flags.importid === id;
-    });
+      const collections = {
+          actors: game.actors.contents,
+          items: game.items.contents,
+          journal: game.journal.contents,
+          macros: game.macros.contents,
+          scenes: game.scenes.contents,
+          tables: game.tables.contents,
+          playlists: game.playlists.contents,
+      };
+      const list = collections[type];
+      if (!list) return undefined;
+      return list.find(item => item.flags?.importid === id);
   }
   
   /**
@@ -286,7 +311,7 @@ export default class Helpers {
       let folderData = f;
 
       let newfolder = game.folders.find(folder => {
-        return (folder.data._id === folderData._id || folder.data.flags.importid === folderData._id) && folder.data.type === folderData.type;
+          return (folder._id === folderData._id || folder.flags?.importid === folderData._id) && folder.documentName === folderData.type;
       });
 
       if(!newfolder) {
@@ -301,12 +326,12 @@ export default class Helpers {
         }
 
         newfolder = await Folder.create(folderData);
-        Helpers.logger.debug(`Created new folder ${newfolder.data._id} with data:`, folderData, newfolder);
+          Helpers.logger.debug(`Created new folder ${newfolder.id} with data:`, folderData, newfolder);
       }
 
-      CONFIG.AIE.TEMPORARY.folders[folderData.flags.importid] = newfolder.data._id;
+      CONFIG.AIE.TEMPORARY.folders[folderData.flags.importid] = newfolder.id;
       
-      let childFolders = folderList.filter(folder => { return folder.parent === folderData._id });
+      let childFolders = folderList.filter(folder => { return folder.parent === folderData.id });
 
       if(childFolders.length > 0) {
         await this.importFolder(newfolder, childFolders, adventure, folderList);
